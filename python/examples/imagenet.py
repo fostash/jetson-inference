@@ -26,17 +26,23 @@ import jetson.utils
 
 import argparse
 import sys
+import time
+import os
 
+from paho.mqtt.client import Client
 
 # parse the command line
-parser = argparse.ArgumentParser(description="Classify a live camera stream using an image recognition DNN.", 
-                                 formatter_class=argparse.RawTextHelpFormatter, epilog=jetson.inference.imageNet.Usage() +
-                                 jetson.utils.videoSource.Usage() + jetson.utils.videoOutput.Usage() + jetson.utils.logUsage())
+parser = argparse.ArgumentParser(description="Classify a live camera stream using an image recognition DNN.",
+                                 formatter_class=argparse.RawTextHelpFormatter,
+                                 epilog=jetson.inference.imageNet.Usage() +
+                                        jetson.utils.videoSource.Usage() + jetson.utils.videoOutput.Usage() + jetson.utils.logUsage())
 
 parser.add_argument("input_URI", type=str, default="", nargs='?', help="URI of the input stream")
 parser.add_argument("output_URI", type=str, default="", nargs='?', help="URI of the output stream")
-parser.add_argument("--network", type=str, default="googlenet", help="pre-trained model to load (see below for options)")
-parser.add_argument("--camera", type=str, default="0", help="index of the MIPI CSI camera to use (e.g. CSI camera 0)\nor for VL42 cameras, the /dev/video device to use.\nby default, MIPI CSI camera 0 will be used.")
+parser.add_argument("--network", type=str, default="googlenet",
+                    help="pre-trained model to load (see below for options)")
+parser.add_argument("--camera", type=str, default="0",
+                    help="index of the MIPI CSI camera to use (e.g. CSI camera 0)\nor for VL42 cameras, the /dev/video device to use.\nby default, MIPI CSI camera 0 will be used.")
 parser.add_argument("--width", type=int, default=1280, help="desired width of camera stream (default is 1280 pixels)")
 parser.add_argument("--height", type=int, default=720, help="desired height of camera stream (default is 720 pixels)")
 parser.add_argument('--headless', action='store_true', default=(), help="run without display")
@@ -44,48 +50,74 @@ parser.add_argument('--headless', action='store_true', default=(), help="run wit
 is_headless = ["--headless"] if sys.argv[0].find('console.py') != -1 else [""]
 
 try:
-	opt = parser.parse_known_args()[0]
+    opt = parser.parse_known_args()[0]
 except:
-	print("")
-	parser.print_help()
-	sys.exit(0)
-
+    print("")
+    parser.print_help()
+    sys.exit(0)
 
 # load the recognition network
 net = jetson.inference.imageNet(opt.network, sys.argv)
 
 # create video sources & outputs
-input = jetson.utils.videoSource(opt.input_URI, argv=sys.argv)
-output = jetson.utils.videoOutput(opt.output_URI, argv=sys.argv+is_headless)
+videoSource = jetson.utils.videoSource(opt.input_URI, argv=sys.argv)
+#output = jetson.utils.videoOutput(opt.output_URI, argv=sys.argv + is_headless)
 font = jetson.utils.cudaFont()
+client = Client(client_id="client_1")
+
+client.connect("localhost")
 
 # process frames until the user exits
+previous_400 = int(round(time.time() * 1000))
+previous_2400 = int(round(time.time() * 1000))
+
 while True:
-	# capture the next image
-	img = input.Capture()
+    actual_400 = int(round(time.time() * 1000))
+    actual_2400 = int(round(time.time() * 1000))
+    if (actual_400 - previous_400) > 400:
+        # capture the next image
+        img = videoSource.Capture()
 
-	# classify the image
-	class_id, confidence = net.Classify(img)
+        # classify the image
+        class_id, confidence = net.Classify(img)
 
-	# find the object description
-	class_desc = net.GetClassDesc(class_id)
+        # find the object description
+        class_desc = net.GetClassDesc(class_id)
 
-	# overlay the result on the image	
-	font.OverlayText(img, img.width, img.height, "{:05.2f}% {:s}".format(confidence * 100, class_desc), 5, 5, font.White, font.Gray40)
-	
-	# render the image
-	output.Render(img)
+#        json_value = '{ "timestamp": %d "class_id": %d, "class_desc": %s, "confidence": %d ' \
+#                     % (actual, class_id, class_desc, confidence)
+#        print (json_value)
+#        if class_desc < 0.1:
+#            # push message to mqtt as classification unknown
+#            client.publish(topic="images/captured/unknown_classification", payload=json_value)
+#        elif 0.1 < class_desc < 0.6:
+#            # push message to mqtt as classification some recognition and some obscure type
+#            client.publish(topic="images/captured/partially/unknown", payload=json_value)
+#            client.publish(topic="images/captured/partially/known", payload=json_value)
+#        elif 0.6 < class_desc < 0.8:
+#            # push message to mqtt as quite sure classification
+#            client.publish(topic="images/captures/almost_sure", payload=json_value)
+#        elif class_desc > 0.8:
+#            # push message to mqtt the deletion of the image
+#            client.publish(topic="images/captured/delete_around", payload=json_value)
 
-	# update the title bar
-	output.SetStatus("{:s} | Network {:.0f} FPS".format(net.GetNetworkName(), net.GetNetworkFPS()))
+        image_path = os.environ.get('CAPTURED_IMAGES_PATH')
+        output_captured = jetson.utils.videoOutput("{}/{}.jpg".format(image_path, actual_400), argv=sys.argv + is_headless)
+        output_captured.Render(img)
+        previous_400 = actual_400
 
-	# print out performance info
-	net.PrintProfilerTimes()
+        if (actual_2400 - previous_2400) > 2400:
+            image_path = os.environ.get('CHECK_STILL_IMAGES_PATH')
+            output_still = jetson.utils.videoOutput("{}/{}.jpg".format(image_path, actual_2400), argv=sys.argv + is_headless)
+            output.Render(img)
+            previous_2400 = actual_2400
 
-	# exit on input/output EOS
-	if not input.IsStreaming() or not output.IsStreaming():
-		break
+        # update the title bar
+        # output.SetStatus("{:s} | Network {:.0f} FPS".format(net.GetNetworkName(), net.GetNetworkFPS()))
 
-	
+        # print out performance info
+        # net.PrintProfilerTimes()
 
-
+        # exit on input/output EOS
+        if not videoSource.IsStreaming(): # or not output.IsStreaming():
+            break
