@@ -84,32 +84,32 @@ while True:
         # find the object description
         class_desc = net.GetClassDesc(class_id)
 
-#        json_value = '{ "timestamp": %d "class_id": %d, "class_desc": %s, "confidence": %d ' \
-#                     % (actual, class_id, class_desc, confidence)
-#        print (json_value)
-#        if class_desc < 0.1:
-#            # push message to mqtt as classification unknown
-#            client.publish(topic="images/captured/unknown_classification", payload=json_value)
-#        elif 0.1 < class_desc < 0.6:
-#            # push message to mqtt as classification some recognition and some obscure type
-#            client.publish(topic="images/captured/partially/unknown", payload=json_value)
-#            client.publish(topic="images/captured/partially/known", payload=json_value)
-#        elif 0.6 < class_desc < 0.8:
-#            # push message to mqtt as quite sure classification
-#            client.publish(topic="images/captures/almost_sure", payload=json_value)
-#        elif class_desc > 0.8:
-#            # push message to mqtt the deletion of the image
-#            client.publish(topic="images/captured/delete_around", payload=json_value)
+        json_value = '{ "timestamp": %d "class_id": %d, "class_desc": %s, "confidence": %d ' \
+                     % (actual_400, class_id, class_desc, confidence)
+        print (json_value)
+        if class_id < 0.1:
+            # push message to mqtt as classification unknown
+            client.publish(topic="images/captured/unknown_classification", payload=json_value)
+        elif 0.1 < class_id < 0.6:
+            # push message to mqtt as classification some recognition and some obscure type
+            client.publish(topic="images/captured/partially/unknown", payload=json_value)
+            client.publish(topic="images/captured/partially/known", payload=json_value)
+        elif 0.6 < class_id < 0.8:
+            # push message to mqtt as quite sure classification
+            client.publish(topic="images/captures/almost_sure", payload=json_value)
+        elif class_id > 0.8:
+            # push message to mqtt the deletion of the image
+            client.publish(topic="images/captured/delete_around", payload=json_value)
 
         image_path = os.environ.get('CAPTURED_IMAGES_PATH')
-        output_captured = jetson.utils.videoOutput("{}/{}.jpg".format(image_path, actual_400), argv=sys.argv + is_headless)
+        output_captured = jetson.utils.videoOutput("file://{}/{}.jpg".format(image_path, actual_400), argv=sys.argv + is_headless)
         output_captured.Render(img)
         previous_400 = actual_400
 
         if (actual_2400 - previous_2400) > 2400:
             image_path = os.environ.get('CHECK_STILL_IMAGES_PATH')
-            output_still = jetson.utils.videoOutput("{}/{}.jpg".format(image_path, actual_2400), argv=sys.argv + is_headless)
-            output.Render(img)
+            output_still = jetson.utils.videoOutput("file://{}/{}.jpg".format(image_path, actual_2400), argv=sys.argv + is_headless)
+            output_still.Render(img)
             previous_2400 = actual_2400
 
         # update the title bar
