@@ -61,10 +61,11 @@ net = jetson.inference.imageNet(opt.network, sys.argv)
 
 # create video sources & outputs
 videoSource = jetson.utils.videoSource(opt.input_URI, argv=sys.argv)
-#output = jetson.utils.videoOutput(opt.output_URI, argv=sys.argv + is_headless)
-font = jetson.utils.cudaFont()
+# output = jetson.utils.videoOutput(opt.output_URI, argv=sys.argv + is_headless)
+# font = jetson.utils.cudaFont()
 client = Client(client_id="client_1")
 
+print("connect to mqtt")
 client.connect("localhost")
 
 # process frames until the user exits
@@ -84,10 +85,10 @@ while True:
         # find the object description
         class_desc = net.GetClassDesc(class_id)
 
-        json_value = '{ "timestamp": %d "class_id": %d, "class_desc": %s, "confidence": %d ' \
+        json_value = '{ "timestamp": %d "class_id": %d, "class_desc": %s, "confidence": %d }' \
                      % (actual_400, class_id, class_desc, confidence)
-        print (json_value)
         if class_id < 0.1:
+            print (json_value)
             # push message to mqtt as classification unknown
             client.publish(topic="images/captured/unknown_classification", payload=json_value)
         elif 0.1 < class_id < 0.6:
@@ -120,4 +121,5 @@ while True:
 
         # exit on input/output EOS
         if not videoSource.IsStreaming(): # or not output.IsStreaming():
+            client.disconnect()
             break
