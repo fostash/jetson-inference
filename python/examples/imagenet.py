@@ -58,6 +58,7 @@ except:
 
 # load the recognition network
 net = jetson.inference.imageNet(opt.network, sys.argv)
+detectnet = jetson.inference.detectNet(opt.network, sys.argv, opt.threshold)
 
 # create video sources & outputs
 videoSource = jetson.utils.videoSource(opt.input_URI, argv=sys.argv)
@@ -90,7 +91,7 @@ while True:
         json_value = '{ "path": "%s", "name": "%s", "timestamp": %d, "format": "jpeg", "class_id": %d, ' \
                      '"class_desc": "%s", "confidence": %d }' \
                      % (captured_image_path, actual_400, actual_400, class_id, class_desc, confidence)
-        if confidence < 0.1:
+        if confidence < 0.4:
             print (json_value)
             # push message to mqtt as classification unknown
             client.publish(topic="images/captured/unknown_classification", payload=json_value)
@@ -122,7 +123,7 @@ while True:
         # net.PrintProfilerTimes()
 
         # detect objects in the image (with overlay)
-        detections = net.Detect(img, overlay=opt.overlay)
+        detections = detectnet.Detect(img, overlay=opt.overlay)
 
         # print the detections
         print("detected {:d} objects in image".format(len(detections)))
