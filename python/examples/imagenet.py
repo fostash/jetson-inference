@@ -70,11 +70,13 @@ client.connect("localhost")
 
 # process frames until the user exits
 previous_400 = int(round(time.time() * 1000))
-previous_2400 = int(round(time.time() * 1000))
+previous_2400 = previous_400
+captured_image_path = os.environ.get('CAPTURED_IMAGES_PATH')
+check_still_image_path = os.environ.get('CHECK_STILL_IMAGES_PATH')
 
 while True:
     actual_400 = int(round(time.time() * 1000))
-    actual_2400 = int(round(time.time() * 1000))
+    actual_2400 = actual_400
     if (actual_400 - previous_400) > 400:
         # capture the next image
         img = videoSource.Capture()
@@ -85,31 +87,31 @@ while True:
         # find the object description
         class_desc = net.GetClassDesc(class_id)
 
-        json_value = '{ "timestamp": %d "class_id": %d, "class_desc": %s, "confidence": %d }' \
-                     % (actual_400, class_id, class_desc, confidence)
-        if class_id < 0.1:
+        json_value = '{ "path": "%s", "name": "%s", "timestamp": %d, "format": "jpeg", "class_id": %d, ' \
+                     '"class_desc": "%s", "confidence": %d }' \
+                     % (captured_image_path, actual_400, actual_400, class_id, class_desc, confidence)
+        if confidence < 0.1:
             print (json_value)
             # push message to mqtt as classification unknown
             client.publish(topic="images/captured/unknown_classification", payload=json_value)
-        elif 0.1 < class_id < 0.6:
-            # push message to mqtt as classification some recognition and some obscure type
-            client.publish(topic="images/captured/partially/unknown", payload=json_value)
-            client.publish(topic="images/captured/partially/known", payload=json_value)
-        elif 0.6 < class_id < 0.8:
+        elif 0.4 < confidence < 0.5:
+            # push message to mqtt as maybe known
+            client.publish(topic="images/captured/partially/maybe_known", payload=json_value)
+        elif 0.6 < confidence < 0.8:
             # push message to mqtt as quite sure classification
             client.publish(topic="images/captures/almost_sure", payload=json_value)
-        elif class_id > 0.8:
+        elif confidence > 0.8:
             # push message to mqtt the deletion of the image
-            client.publish(topic="images/captured/delete_around", payload=json_value)
+            client.publish(topic="images/captured/recognized", payload=json_value)
 
-        image_path = os.environ.get('CAPTURED_IMAGES_PATH')
-        output_captured = jetson.utils.videoOutput("file://{}/{}.jpg".format(image_path, actual_400), argv=sys.argv + is_headless)
+        output_captured = jetson.utils.videoOutput("file://{}/{}.jpg".format(captured_image_path, actual_400),
+                                                   argv=sys.argv + is_headless)
         output_captured.Render(img)
         previous_400 = actual_400
 
         if (actual_2400 - previous_2400) > 2400:
-            image_path = os.environ.get('CHECK_STILL_IMAGES_PATH')
-            output_still = jetson.utils.videoOutput("file://{}/{}.jpg".format(image_path, actual_2400), argv=sys.argv + is_headless)
+            output_still = jetson.utils.videoOutput("file://{}/{}.jpg".format(check_still_image_path, actual_2400),
+                                                    argv=sys.argv + is_headless)
             output_still.Render(img)
             previous_2400 = actual_2400
 
@@ -119,7 +121,15 @@ while True:
         # print out performance info
         # net.PrintProfilerTimes()
 
+        # detect objects in the image (with overlay)
+        detections = net.Detect(img, overlay=opt.overlay)
+
+        # print the detections
+        print("detected {:d} objects in image".format(len(detections)))
+        for detection in detections:
+            print(detection)
+
         # exit on input/output EOS
-        if not videoSource.IsStreaming(): # or not output.IsStreaming():
+        if not videoSource.IsStreaming():  # or not output.IsStreaming():
             client.disconnect()
             break
